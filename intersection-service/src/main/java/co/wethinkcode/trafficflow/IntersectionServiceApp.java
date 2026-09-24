@@ -21,33 +21,29 @@ public class IntersectionServiceApp {
     public static void main(String[] args) {
         loadIntersections();
 
-        try (Javalin app = Javalin.create().start(Services.INTERSECTION.port())) {
-            app.get("/health", ctx -> ctx.result("OK"));
+        Javalin app = Javalin.create().start(Services.INTERSECTION.port());
+        app.get("/health", ctx -> ctx.result("OK"));
 
-            app.get("/intersections", ctx -> {
-                if (intersections.isEmpty()) {
-                    loadIntersections();
-                }
-                ctx.json(intersections.values());
-            });
+        app.get("/intersections", ctx -> {
+            if (intersections.isEmpty()) {
+                loadIntersections();
+            }
+            ctx.json(intersections.values());
+        });
 
-            app.get("/intersections/{id}", ctx -> {
-                String id = ctx.pathParam("id").toUpperCase();
-                if (intersections.isEmpty()) {
-                    loadIntersections();
-                }
-                Intersection record = intersections.get(id);
-                if (record != null) {
-                    ctx.json(record);
-                } else {
-                    ctx.status(404).result("Intersection not found: " + id);
-                }
-            });
+        app.get("/intersections/{id}", ctx -> {
+            String id = ctx.pathParam("id").toUpperCase();
+            if (intersections.isEmpty()) {
+                loadIntersections();
+            }
 
-            Thread.currentThread().join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+            Intersection record = intersections.get(id);
+            if (record != null) {
+                ctx.json(record);
+            } else {
+                ctx.status(404).result("Intersection not found: " + id);
+            }
+        });
     }
 
     private static void loadIntersections() {
@@ -62,9 +58,11 @@ public class IntersectionServiceApp {
                 for (Intersection item : list) {
                     intersections.put(item.id().toUpperCase(), item);
                 }
+            } else {
+                System.err.println("Ingestion service returned status: " + response.statusCode());
             }
-        } catch (Exception ignored) {
-            // Ingestion service might start later; will retry on request
+        } catch (Exception e) {
+            System.err.println("Failed to load intersections from Ingestion Service: " + e.getMessage());
         }
     }
 }
