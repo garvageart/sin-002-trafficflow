@@ -9,9 +9,13 @@ public class IngestionServiceApp {
         IntersectionCsvCleaner cleaner = new IntersectionCsvCleaner();
         List<Intersection> intersections = cleaner.cleanFromClasspath("intersections-legacy.csv");
 
-        Javalin app = Javalin.create().start(7020);
+        try (Javalin app = Javalin.create().start(Services.INGESTION.port())) {
+            app.get("/health", ctx -> ctx.result("OK"));
+            app.get("/intersections", ctx -> ctx.json(intersections));
 
-        app.get("/health", ctx -> ctx.result("OK"));
-        app.get("/intersections", ctx -> ctx.json(intersections));
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
