@@ -1,13 +1,21 @@
 package co.wethinkcode.trafficflow;
 
+import co.wethinkcode.trafficflow.mq.MqConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.Javalin;
+import org.apache.activemq.ActiveMQConnectionFactory;
 
+import javax.jms.Connection;
+import javax.jms.MessageConsumer;
+import javax.jms.Session;
+import javax.jms.TextMessage;
+import javax.jms.Topic;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class RoutingServiceApp {
 
@@ -18,56 +26,77 @@ public class RoutingServiceApp {
 
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final ObjectMapper mapper = new ObjectMapper();
+    private static final AtomicInteger currentCongestionLevel = new AtomicInteger(0);
 
     public static void main(String[] args) {
-        try (Javalin app = Javalin.create().start(Services.ROUTING.port())) {
-            app.get("/health", ctx -> ctx.result("OK"));
+        subscribeToCongestionTopic();
 
-            app.get("/route", ctx -> {
-                String origin = ctx.queryParam("origin") != null ? ctx.queryParam("origin") : ctx.queryParam("from");
-                String destination = ctx.queryParam("destination") != null ? ctx.queryParam("destination") : ctx.queryParam("to");
+        Javalin app = Javalin.create().start(Services.ROUTING.port());
+        app.get("/health", ctx -> ctx.result("OK"));
 
-                if (origin == null || origin.isBlank() || destination == null || destination.isBlank()) {
-                    ctx.status(400).result("Missing required query parameters: 'origin' and 'destination'.");
-                    return;
+        app.get("/route", ctx -> {
+            String origin = ctx.queryParam("origin") != null ? ctx.queryParam("origin") : ctx.queryParam("from");
+            String destination = ctx.queryParam("destination") != null ? ctx.queryParam("destination") : ctx.queryParam("to");
+
+            if (origin == null || origin.isBlank() || destination == null || destination.isBlank()) {
+                ctx.status(400).result("Missing required query parameters: 'origin' and 'destination'.");
+                return;
+            }
+
+            origin = origin.trim().toUpperCase();
+            destination = destination.trim().toUpperCase();
+
+            Boolean originValid = validateIntersection(origin);
+            if (originValid == null) {
+                ctx.status(503).result("Intersection service unavailable.");
+                return;
+            }
+            if (!originValid) {
+                ctx.status(404).result("Invalid origin intersection: " + origin);
+                return;
+            }
+
+            Boolean destinationValid = validateIntersection(destination);
+            if (destinationValid == null) {
+                ctx.status(503).result("Intersection service unavailable.");
+                return;
+            }
+            
+            if (!destinationValid) {
+                ctx.status(404).result("Invalid destination intersection: " + destination);
+                return;
+            }
+
+            int level = currentCongestionLevel.get();
+            double estimatedMinutes = calculateTravelTime(level);
+            ctx.json(new RouteEstimate(origin, destination, level, estimatedMinutes));
+        });
+    }
+
+    private static void subscribeToCongestionTopic() {
+        try {
+            ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(MqConfig.BROKER_URL);
+            Connection connection = factory.createConnection();
+            connection.start();
+
+            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Topic topic = session.createTopic(MqConfig.TOPIC);
+            MessageConsumer consumer = session.createConsumer(topic);
+
+            consumer.setMessageListener(message -> {
+                if (message instanceof TextMessage textMessage) {
+                    try {
+                        JsonNode node = mapper.readTree(textMessage.getText());
+                        if (node.has("level")) {
+                            currentCongestionLevel.set(node.get("level").asInt());
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to parse congestion update message: " + e.getMessage());
+                    }
                 }
-
-                origin = origin.trim().toUpperCase();
-                destination = destination.trim().toUpperCase();
-
-                Boolean originValid = validateIntersection(origin);
-                if (originValid == null) {
-                    ctx.status(503).result("Intersection service unavailable.");
-                    return;
-                }
-                if (!originValid) {
-                    ctx.status(404).result("Invalid origin intersection: " + origin);
-                    return;
-                }
-
-                Boolean destinationValid = validateIntersection(destination);
-                if (destinationValid == null) {
-                    ctx.status(503).result("Intersection service unavailable.");
-                    return;
-                }
-                if (!destinationValid) {
-                    ctx.status(404).result("Invalid destination intersection: " + destination);
-                    return;
-                }
-
-                Integer level = fetchCongestionLevel();
-                if (level == null) {
-                    ctx.status(503).result("Congestion service unavailable.");
-                    return;
-                }
-
-                double estimatedMinutes = calculateTravelTime(level);
-                ctx.json(new RouteEstimate(origin, destination, level, estimatedMinutes));
             });
-
-            Thread.currentThread().join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("ActiveMQ broker unavailable for congestion subscriber: " + e.getMessage());
         }
     }
 
@@ -88,27 +117,6 @@ public class RoutingServiceApp {
 
             if (response.statusCode() == 404) {
                 return false;
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    // LESTODO: Create a `trafficflow` client to fetch data from a service instead of writing
-    // repetitive code
-    private static Integer fetchCongestionLevel() {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(Services.CONGESTION.url("/congestion")))
-                .GET()
-                .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                JsonNode node = mapper.readTree(response.body());
-                if (node.has("level")) {
-                    return node.get("level").asInt();
-                }
             }
             return null;
         } catch (Exception e) {
