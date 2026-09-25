@@ -9,17 +9,16 @@ import javax.jms.MessageConsumer;
 import javax.jms.Queue;
 import javax.jms.Session;
 import javax.jms.TextMessage;
-import java.time.Duration;
-import java.time.Instant;
+import java.util.Date;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class IntersectionWatchdogApp {
 
-    public record WatchdogStatus(String service, boolean healthy, Instant lastHeartbeat, String status) {
+    public record WatchdogStatus(String service, boolean healthy, Date lastHeartbeat, String status) {
     }
 
-    private static final long HEARTBEAT_TIMEOUT_SECONDS = 5;
-    private static final AtomicReference<Instant> lastHeartbeat = new AtomicReference<>(null);
+    private static final long HEARTBEAT_TIMEOUT_MS = 5000;
+    private static final AtomicReference<Date> lastHeartbeat = new AtomicReference<>(null);
 
     public static void main(String[] args) {
         subscribeToHeartbeatQueue();
@@ -40,14 +39,14 @@ public class IntersectionWatchdogApp {
     }
 
     private static boolean isHealthy() {
-        Instant last = lastHeartbeat.get();
+        Date last = lastHeartbeat.get();
         if (last == null) {
             return false;
         }
 
-        long timeSinceLast = Duration.between(last, Instant.now()).getSeconds();
+        long timeSinceLast = System.currentTimeMillis() - last.getTime();
 
-        return timeSinceLast <= HEARTBEAT_TIMEOUT_SECONDS;
+        return timeSinceLast <= HEARTBEAT_TIMEOUT_MS;
     }
 
     private static void subscribeToHeartbeatQueue() {
@@ -62,7 +61,7 @@ public class IntersectionWatchdogApp {
 
             consumer.setMessageListener(message -> {
                 if (message instanceof TextMessage) {
-                    lastHeartbeat.set(Instant.now());
+                    lastHeartbeat.set(new Date());
                 }
             });
         } catch (Exception e) {

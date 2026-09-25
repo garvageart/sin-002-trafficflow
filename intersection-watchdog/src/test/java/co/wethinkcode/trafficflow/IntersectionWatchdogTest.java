@@ -30,7 +30,7 @@ class IntersectionWatchdogTest {
         @Test
         @DisplayName("WatchdogStatus stores health state, timestamp, and status string")
         void recordStoresStatusCorrectly() {
-            Instant now = Instant.now();
+            java.util.Date now = new java.util.Date();
             IntersectionWatchdogApp.WatchdogStatus status = new IntersectionWatchdogApp.WatchdogStatus(
                     "intersection-service",
                     true,
