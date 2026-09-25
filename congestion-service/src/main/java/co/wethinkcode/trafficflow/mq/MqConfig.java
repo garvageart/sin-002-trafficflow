@@ -7,7 +7,7 @@ package co.wethinkcode.trafficflow.mq;
  */
 public final class MqConfig {
 
-    public static final String BROKER_URL = "tcp://localhost:61616";
+    public static final String BROKER_URL = System.getenv().getOrDefault("ACTIVEMQ_BROKER_URL", "tcp://localhost:61616");
     public static final String TOPIC = "congestion-topic";
 
     private MqConfig() {
