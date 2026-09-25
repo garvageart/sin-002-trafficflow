@@ -21,7 +21,7 @@ COPY congestion-service/src congestion-service/src
 COPY routing-service/src routing-service/src
 COPY intersection-watchdog/src intersection-watchdog/src
 
-# Build all modules once using Docker BuildKit cache mount
+# Build all modules using BuildKit cache mount
 RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests
 
 # Runtime Stage: Ingestion Service
