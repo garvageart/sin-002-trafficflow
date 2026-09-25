@@ -91,6 +91,36 @@ class IntersectionCsvCleanerTest {
             assertThat(result).hasSize(1);
             assertThat(result.get(0).id()).isEqualTo("INT-2001");
         }
+
+        @Test
+        @DisplayName("Handles rows with fewer columns than expected")
+        void handlesShortRows() throws Exception {
+            List<Intersection> result = cleaner.clean(createCsvStream(
+                    "intersection_id,District,signal_type,active_flag",
+                    "INT-3001",
+                    "INT-3002,Downtown",
+                    "INT-3003,Midtown,4-way"
+            ));
+
+            assertThat(result).hasSize(3);
+            assertThat(result.get(0)).isEqualTo(new Intersection("INT-3001", null, null, null));
+            assertThat(result.get(1)).isEqualTo(new Intersection("INT-3002", "Downtown", null, null));
+            assertThat(result.get(2)).isEqualTo(new Intersection("INT-3003", "Midtown", "4-way", null));
+        }
+
+        @Test
+        @DisplayName("Handles empty line within CSV content")
+        void handlesEmptyLinesWithinContent() throws Exception {
+            List<Intersection> result = cleaner.clean(createCsvStream(
+                    "intersection_id,District,signal_type,active_flag",
+                    "INT-4001,Downtown,4-way,Y",
+                    "",
+                    "INT-4002,Midtown,pedestrian,N"
+            ));
+
+            assertThat(result).hasSize(2);
+            assertThat(result).extracting(Intersection::id).containsExactly("INT-4001", "INT-4002");
+        }
     }
 
     @Nested

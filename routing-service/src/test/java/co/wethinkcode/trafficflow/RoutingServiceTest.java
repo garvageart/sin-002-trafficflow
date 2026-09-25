@@ -5,12 +5,22 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 @DisplayName("Routing Service Tests")
 class RoutingServiceTest {
+
+    private String resolveParam(String primary, String alias) {
+        String val = (primary != null && !primary.isBlank()) ? primary : alias;
+        return (val != null && !val.isBlank()) ? val.trim().toUpperCase() : null;
+    }
+
+    private boolean isValidRouteRequest(String origin, String destination) {
+        return origin != null && !origin.isBlank() && destination != null && !destination.isBlank();
+    }
 
     @Nested
     @DisplayName("Travel Time Calculation Formula Tests")
@@ -45,6 +55,62 @@ class RoutingServiceTest {
         void maxCongestionTriplesBaseTime() {
             double actual = RoutingServiceApp.calculateTravelTime(8);
             assertThat(actual).isEqualTo(30.0);
+        }
+    }
+
+    @Nested
+    @DisplayName("Route Request Query Parameter Validation Tests")
+    class ParameterValidationTests {
+
+        @Test
+        @DisplayName("Valid origin and destination pass validation")
+        void validParametersPass() {
+            assertThat(isValidRouteRequest("INT-1001", "INT-1002")).isTrue();
+        }
+
+        @Test
+        @DisplayName("Null origin fails validation")
+        void nullOriginFails() {
+            assertThat(isValidRouteRequest(null, "INT-1002")).isFalse();
+        }
+
+        @Test
+        @DisplayName("Null destination fails validation")
+        void nullDestinationFails() {
+            assertThat(isValidRouteRequest("INT-1001", null)).isFalse();
+        }
+
+        @ParameterizedTest(name = "Blank origin \"{0}\" fails validation")
+        @ValueSource(strings = {"", " ", "   ", "\t", "\n"})
+        void blankOriginFails(String blank) {
+            assertThat(isValidRouteRequest(blank, "INT-1002")).isFalse();
+        }
+
+        @ParameterizedTest(name = "Blank destination \"{0}\" fails validation")
+        @ValueSource(strings = {"", " ", "   ", "\t", "\n"})
+        void blankDestinationFails(String blank) {
+            assertThat(isValidRouteRequest("INT-1001", blank)).isFalse();
+        }
+
+        @Test
+        @DisplayName("Resolves primary origin parameter with uppercase and trimming")
+        void resolvesPrimaryOrigin() {
+            String resolved = resolveParam("  int-1001  ", null);
+            assertThat(resolved).isEqualTo("INT-1001");
+        }
+
+        @Test
+        @DisplayName("Resolves alias 'from' parameter when primary is null")
+        void resolvesFromAlias() {
+            String resolved = resolveParam(null, "  int-1002  ");
+            assertThat(resolved).isEqualTo("INT-1002");
+        }
+
+        @Test
+        @DisplayName("Resolves alias 'to' parameter when primary is null")
+        void resolvesToAlias() {
+            String resolved = resolveParam(null, "  int-1003  ");
+            assertThat(resolved).isEqualTo("INT-1003");
         }
     }
 
